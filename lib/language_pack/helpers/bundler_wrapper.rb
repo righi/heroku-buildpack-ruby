@@ -1,9 +1,10 @@
 class LanguagePack::Helpers::BundlerWrapper
+  include LanguagePack::ShellHelpers
+
   class GemfileParseError < StandardError
     def initialize(error)
       msg = "There was an error parsing your Gemfile, we cannot continue\n"
-      msg << error.message
-      self.set_backtrace(error.backtrace)
+      msg << error
       super msg
     end
   end
@@ -90,11 +91,6 @@ class LanguagePack::Helpers::BundlerWrapper
     Bundler.ui = Bundler::UI::Shell.new({})
   end
 
-  def definition
-    Bundler.definition(@unlock)
-  rescue => e
-    raise GemfileParseError.new(e)
-  end
 
   def unlock
     @unlock = true
@@ -104,8 +100,16 @@ class LanguagePack::Helpers::BundlerWrapper
   end
 
   def ruby_version
-    unlock do
-      definition.ruby_version
+    @ruby_version ||= begin
+      old_system_path = "/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+      command         = "env PATH=#{bundler_path}/bin:#{old_system_path} GEM_PATH=#{bundler_path} bundle platform --ruby"
+      output = run_stdout(command, user_env: true).chomp.sub('(', '').sub(')', '').split.join('-')
+      raise GemfileParseError.new(run(command, user_env: true)) unless $?.success?
+      if output.match(/No-ruby-version-specified/)
+        ""
+      else
+        output
+      end
     end
   end
 
